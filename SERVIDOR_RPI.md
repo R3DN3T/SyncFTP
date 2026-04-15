@@ -211,6 +211,22 @@ En **Settings → SFTP Client Settings** configura:
 - **Server URL:** `http://192.168.X.X:3000` (donde X.X es tu IP de la RPi)
 - **Username/Password/etc:** Los credentials de tu servidor SFTP (que el servidor usará para conectarse)
 
+### Sincronizar vaults entre dispositivos
+
+**Importante:** Cuando descargas un vault desde el servidor a un dispositivo nuevo, Obsidian **reemplaza automáticamente** el ID local con el del servidor si descargas los archivos de `.obsidian/`. Esto hace que los dos vaults sean idénticos.
+
+**Recomendación para primer uso en móvil:**
+1. En móvil, crea un vault nuevo con el **mismo nombre exacto** que en PC
+2. Configura el plugin con la IP del servidor
+3. Haz clic en **Download** - esto descargará todos los archivos, incluyendo `.obsidian/`
+4. El vault móvil adoptará automáticamente el mismo ID que el del servidor
+5. Futuras descargas/uploads funcionarán perfectamente
+
+**Si no funciona el download:**
+- Verifica que el **nombre del vault es idéntico** (mayúsculas/minúsculas importan)
+- Verifica que la **Vault Path** en settings es la misma en todos tus dispositivos
+- Si aún no funciona, usa una app de SFTP para copiar manualmente el vault la primera vez
+
 ## Para acceso remoto (móvil con VPN)
 
 Si quieres acceso desde fuera de la red:

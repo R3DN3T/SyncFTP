@@ -171,10 +171,12 @@ export default class SyncFTP extends Plugin {
 				});
 
 				if (this.settings.notify) new Notice(conn);
-				console.log(this.client.fileExists(this.settings.vault_path + this.app.vault.getName()));
 
-				if (! await this.client.fileExists(this.settings.vault_path + this.app.vault.getName())) {
-					new Notice('Vault does not exist on SFTP, nothing to download. Please upload.');
+				const vaultName = this.app.vault.getName();
+				const vaultPath = this.settings.vault_path + vaultName;
+
+				if (! await this.client.fileExists(vaultPath)) {
+					new Notice(`Vault "${vaultName}" does not exist at ${vaultPath}. Please upload first or check vault name.`);
 				} else {
 					let rem_path = this.settings.vault_path + this.app.vault.getName();
 					let rem_list = await this.client.listFiles(rem_path);
