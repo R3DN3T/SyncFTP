@@ -48,6 +48,12 @@ app.use((req, res, next) => {
   next();
 });
 
+// Error handling middleware (debe ir antes de las rutas)
+app.use((err, req, res, next) => {
+  console.error('[ERROR]', err);
+  res.status(500).json({ error: err.message || 'Internal Server Error' });
+});
+
 let sftpClient = null;
 let currentConfig = null;
 
@@ -59,7 +65,14 @@ app.get('/health', (req, res) => {
 // Conectar al servidor SFTP
 app.post('/connect', async (req, res) => {
   try {
+    console.log('[CONNECT] Request received');
     console.log('[CONNECT] Request body:', req.body);
+    
+    // Validar que tenemos los datos necesarios
+    if (!req.body.host || !req.body.username || !req.body.password) {
+      console.error('[CONNECT] Missing required fields');
+      return res.status(400).json({ error: 'Missing host, username, or password' });
+    }
     
     // Cerrar conexión anterior si existe
     if (sftpClient) {
@@ -77,18 +90,26 @@ app.post('/connect', async (req, res) => {
       port: req.body.port || 22,
       username: req.body.username,
       password: req.body.password,
+      readyTimeout: 30000,
     };
 
+    console.log('[CONNECT] Creating SFTP client...');
     sftpClient = new SftpClient();
+    
+    console.log('[CONNECT] Attempting to connect...');
     await sftpClient.connect(config);
     currentConfig = config;
 
-    console.log('[CONNECT] Success');
-    res.json({ message: 'Connected' });
+    console.log('[CONNECT] Connection successful');
+    res.json({ message: 'Connected', success: true });
   } catch (error) {
-    console.error('[CONNECT] Error:', error.message);
+    console.error('[CONNECT] Connection failed:', error.message);
+    console.error('[CONNECT] Error details:', error);
     sftpClient = null;
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ 
+      error: `Connection failed: ${error.message}`,
+      success: false 
+    });
   }
 });
 

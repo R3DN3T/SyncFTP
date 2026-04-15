@@ -9,6 +9,8 @@ export default class SFTPClient {
     const url = `${this.baseUrl}${endpoint}`;
     
     try {
+      console.log(`[SFTPClient] Requesting: ${method} ${url}`);
+      
       const response = await fetch(url, {
         method,
         headers: {
@@ -23,8 +25,10 @@ export default class SFTPClient {
       }
 
       const text = await response.text();
+      console.log(`[SFTPClient] Response received from ${endpoint}`);
       return text ? JSON.parse(text) : {};
     } catch (error) {
+      console.error(`[SFTPClient] Request error on ${endpoint}:`, error);
       throw error;
     }
   }
