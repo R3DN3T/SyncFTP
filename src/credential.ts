@@ -59,6 +59,16 @@ export default class CredentialTab extends PluginSettingTab {
 		containerEl.createEl('h2', {text: 'Credentials'});
 
 		new Setting(containerEl)
+			.setName('Server URL')
+			.setDesc('HTTP server URL (e.g., http://192.168.1.100:3000)')
+			.addText(text => text
+				.setValue(this.plugin.settings.server_url)
+				.onChange(async (value) => {
+					this.plugin.settings.server_url = value;
+					await this.plugin.saveSettings();
+				}));
+
+		new Setting(containerEl)
 			.setName('Username')
 			.setDesc('FTP Username')
 			.addText(text => text

@@ -12,6 +12,7 @@ interface SyncFTPSettings {
 	vault_path: string;
 	notify: boolean;
 	load_sync: boolean;
+	server_url: string;
 }
 
 const DEFAULT_SETTINGS: SyncFTPSettings = {
@@ -23,7 +24,8 @@ const DEFAULT_SETTINGS: SyncFTPSettings = {
 	password: '',
 	vault_path: '/obsidian/',
 	notify: false,
-	load_sync: false
+	load_sync: false,
+	server_url: 'http://localhost:3000'
 }
 
 export default class SyncFTP extends Plugin {
@@ -33,7 +35,7 @@ export default class SyncFTP extends Plugin {
 	async onload() {
 		await this.loadSettings();
 
-		this.client = new SFTPClient();
+		this.client = new SFTPClient(this.settings.server_url);
 
 		if (this.settings.load_sync) {
 			this.downloadFile();

@@ -1,143 +1,169 @@
-import { Client, ConnectConfig } from "ssh2";
-
-interface ExtendedConnectConfig extends ConnectConfig {
-  proxy_host?: string;
-  proxy_port?: number;
-}
-
 export default class SFTPClient {
-  private conn: Client;
+  private baseUrl: string;
 
-  constructor() {
-    this.conn = new Client();
+  constructor(baseUrl: string = "http://localhost:3000") {
+    this.baseUrl = baseUrl;
   }
 
-  private connectSSH(options: ExtendedConnectConfig): Promise<any> {
-    return new Promise((resolve, reject) => {
-      this.conn
-        .on("ready" as any, resolve)
-        .on("error", reject)
-        .connect({
-          host: options.host,
-          port: options.port,
-          username: options.username,
-          password: options.password,
-        });
-    });
-  }
+  async connect(options: any): Promise<string> {
+    try {
+      const response = await fetch(`${this.baseUrl}/connect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(options),
+      });
 
-  async connect(options: ExtendedConnectConfig) {
-    await this.connectSSH(options);
-    return "Connected";
+      if (!response.ok) {
+        throw new Error(`Connection failed: ${response.statusText}`);
+      }
+
+      return "Connected";
+    } catch (error) {
+      throw new Error(`Failed to connect: ${error}`);
+    }
   }
 
   async listFiles(remoteDir: string): Promise<any[]> {
-    return new Promise((resolve, reject) => {
-      this.conn.sftp((err, sftp) => {
-        if (err) return reject(err);
-
-        sftp.readdir(remoteDir, (err, list) => {
-          if (err) return reject(err);
-
-          const out = list.map(f => ({
-            name: f.filename,
-            size: f.attrs.size,
-            mtime: f.attrs.mtime * 1000,
-            type: f.longname.startsWith("d") ? "d" : "f",
-            path: remoteDir
-          }));
-
-          resolve(out);
-        });
+    try {
+      const response = await fetch(`${this.baseUrl}/list`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: remoteDir }),
       });
-    });
+
+      if (!response.ok) {
+        throw new Error(`List failed: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      throw new Error(`Failed to list files: ${error}`);
+    }
   }
 
-  async uploadFile(localPath: string, remotePath: string, vault: any): Promise<string> {
-    const content = await vault.adapter.read(localPath);
+  async uploadFile(
+    localPath: string,
+    remotePath: string,
+    vault: any
+  ): Promise<string> {
+    try {
+      const content = await vault.adapter.read(localPath);
 
-    return new Promise((resolve, reject) => {
-      this.conn.sftp((err, sftp) => {
-        if (err) return reject(err);
-
-        const writeStream = sftp.createWriteStream(remotePath);
-
-        writeStream.on("close", () => resolve(""));
-        writeStream.on("error", reject);
-
-        writeStream.end(content);
+      const response = await fetch(`${this.baseUrl}/upload`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: remotePath, content }),
       });
-    });
+
+      if (!response.ok) {
+        throw new Error(`Upload failed: ${response.statusText}`);
+      }
+
+      return "";
+    } catch (error) {
+      throw new Error(`Failed to upload: ${error}`);
+    }
   }
 
-  async downloadFile(remotePath: string, localPath: string, vault: any): Promise<string> {
-    return new Promise((resolve, reject) => {
-      this.conn.sftp((err, sftp) => {
-        if (err) return reject(err);
-
-        let data = "";
-
-        const stream = sftp.createReadStream(remotePath);
-
-        stream.on("data", (chunk: any) => data += chunk);
-        stream.on("end", async () => {
-          await vault.adapter.write(localPath, data);
-          resolve("");
-        });
-        stream.on("error", reject);
+  async downloadFile(
+    remotePath: string,
+    localPath: string,
+    vault: any
+  ): Promise<string> {
+    try {
+      const response = await fetch(`${this.baseUrl}/download`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path: remotePath }),
       });
-    });
+
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.statusText}`);
+      }
+
+      const content = await response.text();
+      await vault.adapter.write(localPath, content);
+      return "";
+    } catch (error) {
+      throw new Error(`Failed to download: ${error}`);
+    }
   }
 
   async fileExists(path: string): Promise<boolean> {
-    return new Promise((resolve, reject) => {
-      this.conn.sftp((err, sftp) => {
-        if (err) return reject(err);
-        sftp.stat(path, (err) => {
-          resolve(!err);
-        });
+    try {
+      const response = await fetch(`${this.baseUrl}/exists`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
       });
-    });
+
+      const data = await response.json();
+      return data.exists === true;
+    } catch (error) {
+      return false;
+    }
   }
 
   async makeDir(path: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      this.conn.sftp((err, sftp) => {
-        if (err) return reject(err);
-        sftp.mkdir(path, (err) => {
-          if (err) return reject(err);
-          resolve("");
-        });
+    try {
+      const response = await fetch(`${this.baseUrl}/mkdir`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
       });
-    });
+
+      if (!response.ok) {
+        throw new Error(`Mkdir failed: ${response.statusText}`);
+      }
+
+      return "";
+    } catch (error) {
+      throw new Error(`Failed to create directory: ${error}`);
+    }
   }
 
   async removeDir(path: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      this.conn.sftp((err, sftp) => {
-        if (err) return reject(err);
-        sftp.rmdir(path, (err) => {
-          if (err) return reject(err);
-          resolve("");
-        });
+    try {
+      const response = await fetch(`${this.baseUrl}/rmdir`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
       });
-    });
+
+      if (!response.ok) {
+        throw new Error(`Rmdir failed: ${response.statusText}`);
+      }
+
+      return "";
+    } catch (error) {
+      throw new Error(`Failed to remove directory: ${error}`);
+    }
   }
 
   async deleteFile(path: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      this.conn.sftp((err, sftp) => {
-        if (err) return reject(err);
-        sftp.unlink(path, (err) => {
-          if (err) return reject(err);
-          resolve("");
-        });
+    try {
+      const response = await fetch(`${this.baseUrl}/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ path }),
       });
-    });
+
+      if (!response.ok) {
+        throw new Error(`Delete failed: ${response.statusText}`);
+      }
+
+      return "";
+    } catch (error) {
+      throw new Error(`Failed to delete file: ${error}`);
+    }
   }
 
-  async disconnect() {
-    this.conn.end();
-    return "Disconnected";
+  async disconnect(): Promise<string> {
+    try {
+      await fetch(`${this.baseUrl}/disconnect`, { method: "POST" });
+      return "Disconnected";
+    } catch (error) {
+      return "Disconnected";
+    }
   }
 }
