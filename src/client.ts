@@ -3,22 +3,26 @@ export default class SFTPClient {
 
   constructor(baseUrl: string = "http://localhost:3000") {
     this.baseUrl = baseUrl;
+    console.log(`[SFTPClient] Initialized with baseUrl: ${this.baseUrl}`);
   }
 
   async connect(options: any): Promise<string> {
     try {
+      console.log(`[SFTPClient] Connecting to ${this.baseUrl}/connect`, options);
       const response = await fetch(`${this.baseUrl}/connect`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(options),
       });
 
+      console.log(`[SFTPClient] Connect response status:`, response.status);
       if (!response.ok) {
         throw new Error(`Connection failed: ${response.statusText}`);
       }
 
       return "Connected";
     } catch (error) {
+      console.error(`[SFTPClient] Connect error:`, error);
       throw new Error(`Failed to connect: ${error}`);
     }
   }
