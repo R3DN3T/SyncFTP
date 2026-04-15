@@ -3,21 +3,17 @@ export default class SFTPClient {
 
   constructor(baseUrl: string = "http://localhost:3000") {
     this.baseUrl = baseUrl;
-    console.log(`[SFTPClient] Initialized with baseUrl: ${this.baseUrl}`);
   }
 
   private async request(endpoint: string, method: string, data?: any): Promise<any> {
     return new Promise((resolve, reject) => {
       const xhr = new XMLHttpRequest();
       const url = `${this.baseUrl}${endpoint}`;
-      
-      console.log(`[SFTPClient] ${method} ${url}`, data);
 
       xhr.open(method, url, true);
       xhr.setRequestHeader('Content-Type', 'application/json');
 
       xhr.onload = () => {
-        console.log(`[SFTPClient] Response ${xhr.status}:`, xhr.responseText);
         if (xhr.status >= 200 && xhr.status < 300) {
           try {
             const response = xhr.responseText ? JSON.parse(xhr.responseText) : {};
@@ -52,7 +48,6 @@ export default class SFTPClient {
 
   async connect(options: any): Promise<string> {
     try {
-      console.log(`[SFTPClient] Connecting...`, options);
       await this.request('/connect', 'POST', options);
       return "Connected";
     } catch (error) {
@@ -64,7 +59,11 @@ export default class SFTPClient {
   async listFiles(remoteDir: string): Promise<any[]> {
     try {
       const response = await this.request('/list', 'POST', { path: remoteDir });
-      return Array.isArray(response) ? response : [];
+      const files = Array.isArray(response) ? response : [];
+      return files.map(file => ({
+        ...file,
+        path: remoteDir
+      }));
     } catch (error) {
       throw new Error(`Failed to list files: ${error}`);
     }
