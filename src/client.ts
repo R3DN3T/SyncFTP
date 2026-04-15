@@ -73,7 +73,7 @@ export default class SFTPClient {
   ): Promise<string> {
     try {
       const response = await this.request('/download', 'POST', { path: remotePath });
-      const content = typeof response === 'string' ? response : JSON.stringify(response);
+      const content = response.content || '';
       await vault.adapter.write(localPath, content);
       return "";
     } catch (error) {

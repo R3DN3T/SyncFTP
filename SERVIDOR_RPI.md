@@ -101,7 +101,8 @@ app.post('/download', async (req, res) => {
     }
 
     const content = await sftpClient.get(req.body.path);
-    res.type('text/plain').send(content);
+    const text = content.toString('utf8');
+    res.json({ content: text });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
