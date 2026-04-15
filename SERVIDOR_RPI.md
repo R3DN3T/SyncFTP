@@ -60,6 +60,18 @@ app.get('/health', (req, res) => {
 app.post('/connect', async (req, res) => {
   try {
     console.log('[CONNECT] Request body:', req.body);
+    
+    // Cerrar conexión anterior si existe
+    if (sftpClient) {
+      try {
+        console.log('[CONNECT] Closing previous connection...');
+        await sftpClient.end();
+      } catch (e) {
+        console.log('[CONNECT] Previous connection was already closed');
+      }
+      sftpClient = null;
+    }
+    
     const config = {
       host: req.body.host,
       port: req.body.port || 22,
@@ -75,6 +87,7 @@ app.post('/connect', async (req, res) => {
     res.json({ message: 'Connected' });
   } catch (error) {
     console.error('[CONNECT] Error:', error.message);
+    sftpClient = null;
     res.status(500).json({ error: error.message });
   }
 });

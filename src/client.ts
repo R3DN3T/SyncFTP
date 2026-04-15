@@ -30,13 +30,20 @@ export default class SFTPClient {
   }
 
   async connect(options: any): Promise<string> {
-    try {
-      await this.request('/connect', 'POST', options);
-      return "Connected";
-    } catch (error) {
-      console.error(`[SFTPClient] Connect error:`, error);
-      throw new Error(`Failed to connect: ${error}`);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await this.request('/connect', 'POST', options);
+        return "Connected";
+      } catch (error) {
+        if (attempt === 3) {
+          console.error(`[SFTPClient] Connect error after 3 attempts:`, error);
+          throw new Error(`Failed to connect: ${error}`);
+        }
+        console.log(`[SFTPClient] Connect attempt ${attempt} failed, retrying...`);
+        await new Promise(resolve => setTimeout(resolve, 1000)); // 1 segundo delay
+      }
     }
+    throw new Error('Failed to connect');
   }
 
   async listFiles(remoteDir: string): Promise<any[]> {
