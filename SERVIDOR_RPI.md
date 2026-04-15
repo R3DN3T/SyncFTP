@@ -30,12 +30,17 @@ const SftpClient = require('ssh2-sftp-client');
 
 const app = express();
 
-// CORS más agresivo
+// CORS Configuration for Obsidian (PC & Mobile)
 app.use(cors({
   origin: '*',
-  methods: ['GET', 'POST', 'OPTIONS'],
-  credentials: true
+  methods: ['GET', 'POST', 'OPTIONS', 'PUT', 'DELETE'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false,
+  maxAge: 86400
 }));
+
+// Handle preflight requests explicitly
+app.options('*', cors());
 
 app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));

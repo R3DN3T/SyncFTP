@@ -6,44 +6,27 @@ export default class SFTPClient {
   }
 
   private async request(endpoint: string, method: string, data?: any): Promise<any> {
-    return new Promise((resolve, reject) => {
-      const xhr = new XMLHttpRequest();
-      const url = `${this.baseUrl}${endpoint}`;
+    const url = `${this.baseUrl}${endpoint}`;
+    
+    try {
+      const response = await fetch(url, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: data ? JSON.stringify(data) : undefined,
+      });
 
-      xhr.open(method, url, true);
-      xhr.setRequestHeader('Content-Type', 'application/json');
-
-      xhr.onload = () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-          try {
-            const response = xhr.responseText ? JSON.parse(xhr.responseText) : {};
-            resolve(response);
-          } catch (e) {
-            resolve(xhr.responseText);
-          }
-        } else {
-          reject(new Error(`HTTP ${xhr.status}: ${xhr.responseText}`));
-        }
-      };
-
-      xhr.onerror = () => {
-        console.error(`[SFTPClient] XHR Error:`, xhr.status, xhr.statusText);
-        reject(new Error(`Failed to ${method} ${endpoint}: ${xhr.statusText}`));
-      };
-
-      xhr.ontimeout = () => {
-        console.error(`[SFTPClient] XHR Timeout`);
-        reject(new Error(`Request timeout`));
-      };
-
-      xhr.timeout = 30000;
-
-      if (data) {
-        xhr.send(JSON.stringify(data));
-      } else {
-        xhr.send();
+      if (!response.ok) {
+        const text = await response.text();
+        throw new Error(`HTTP ${response.status}: ${text}`);
       }
-    });
+
+      const text = await response.text();
+      return text ? JSON.parse(text) : {};
+    } catch (error) {
+      throw error;
+    }
   }
 
   async connect(options: any): Promise<string> {
