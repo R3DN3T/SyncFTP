@@ -83,9 +83,14 @@ export default class SFTPClient {
 
   async fileExists(path: string): Promise<boolean> {
     try {
+      console.log(`[SFTPClient] fileExists() checking: "${path}"`);
       const response = await this.request('/exists', 'POST', { path });
-      return response.exists === true;
+      console.log(`[SFTPClient] fileExists() response:`, response);
+      const exists = response.exists === true;
+      console.log(`[SFTPClient] fileExists() result: ${exists}`);
+      return exists;
     } catch (error) {
+      console.error(`[SFTPClient] fileExists() error:`, error);
       return false;
     }
   }

@@ -171,9 +171,30 @@ app.post('/exists', async (req, res) => {
       return res.status(400).json({ error: 'Not connected' });
     }
 
-    const exists = await sftpClient.exists(req.body.path);
-    res.json({ exists });
+    const path = req.body.path;
+    console.log(`[EXISTS] Checking path: "${path}"`);
+    
+    try {
+      // Intentar listar (funciona para directorios)
+      const list = await sftpClient.list(path);
+      console.log(`[EXISTS] Success - is directory with ${list.length} items`);
+      res.json({ exists: true });
+    } catch (listError) {
+      console.log(`[EXISTS] List failed, trying stat...`);
+      try {
+        // Si no es directorio, intentar como archivo
+        const stat = await sftpClient.stat(path);
+        console.log(`[EXISTS] Success - is file/other`);
+        res.json({ exists: true });
+      } catch (statError) {
+        console.log(`[EXISTS] NOT FOUND - path does not exist`);
+        console.log(`[EXISTS] List error: ${listError.message}`);
+        console.log(`[EXISTS] Stat error: ${statError.message}`);
+        res.json({ exists: false });
+      }
+    }
   } catch (error) {
+    console.error(`[EXISTS] Unexpected error:`, error.message);
     res.json({ exists: false });
   }
 });
