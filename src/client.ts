@@ -6,20 +6,54 @@ export default class SFTPClient {
     console.log(`[SFTPClient] Initialized with baseUrl: ${this.baseUrl}`);
   }
 
+  private async request(endpoint: string, method: string, data?: any): Promise<any> {
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      const url = `${this.baseUrl}${endpoint}`;
+      
+      console.log(`[SFTPClient] ${method} ${url}`, data);
+
+      xhr.open(method, url, true);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+
+      xhr.onload = () => {
+        console.log(`[SFTPClient] Response ${xhr.status}:`, xhr.responseText);
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const response = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+            resolve(response);
+          } catch (e) {
+            resolve(xhr.responseText);
+          }
+        } else {
+          reject(new Error(`HTTP ${xhr.status}: ${xhr.responseText}`));
+        }
+      };
+
+      xhr.onerror = () => {
+        console.error(`[SFTPClient] XHR Error:`, xhr.status, xhr.statusText);
+        reject(new Error(`Failed to ${method} ${endpoint}: ${xhr.statusText}`));
+      };
+
+      xhr.ontimeout = () => {
+        console.error(`[SFTPClient] XHR Timeout`);
+        reject(new Error(`Request timeout`));
+      };
+
+      xhr.timeout = 30000;
+
+      if (data) {
+        xhr.send(JSON.stringify(data));
+      } else {
+        xhr.send();
+      }
+    });
+  }
+
   async connect(options: any): Promise<string> {
     try {
-      console.log(`[SFTPClient] Connecting to ${this.baseUrl}/connect`, options);
-      const response = await fetch(`${this.baseUrl}/connect`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(options),
-      });
-
-      console.log(`[SFTPClient] Connect response status:`, response.status);
-      if (!response.ok) {
-        throw new Error(`Connection failed: ${response.statusText}`);
-      }
-
+      console.log(`[SFTPClient] Connecting...`, options);
+      await this.request('/connect', 'POST', options);
       return "Connected";
     } catch (error) {
       console.error(`[SFTPClient] Connect error:`, error);
@@ -29,17 +63,8 @@ export default class SFTPClient {
 
   async listFiles(remoteDir: string): Promise<any[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/list`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: remoteDir }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`List failed: ${response.statusText}`);
-      }
-
-      return await response.json();
+      const response = await this.request('/list', 'POST', { path: remoteDir });
+      return Array.isArray(response) ? response : [];
     } catch (error) {
       throw new Error(`Failed to list files: ${error}`);
     }
@@ -52,17 +77,7 @@ export default class SFTPClient {
   ): Promise<string> {
     try {
       const content = await vault.adapter.read(localPath);
-
-      const response = await fetch(`${this.baseUrl}/upload`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: remotePath, content }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Upload failed: ${response.statusText}`);
-      }
-
+      await this.request('/upload', 'POST', { path: remotePath, content });
       return "";
     } catch (error) {
       throw new Error(`Failed to upload: ${error}`);
@@ -75,17 +90,8 @@ export default class SFTPClient {
     vault: any
   ): Promise<string> {
     try {
-      const response = await fetch(`${this.baseUrl}/download`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path: remotePath }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Download failed: ${response.statusText}`);
-      }
-
-      const content = await response.text();
+      const response = await this.request('/download', 'POST', { path: remotePath });
+      const content = typeof response === 'string' ? response : JSON.stringify(response);
       await vault.adapter.write(localPath, content);
       return "";
     } catch (error) {
@@ -95,14 +101,8 @@ export default class SFTPClient {
 
   async fileExists(path: string): Promise<boolean> {
     try {
-      const response = await fetch(`${this.baseUrl}/exists`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
-      });
-
-      const data = await response.json();
-      return data.exists === true;
+      const response = await this.request('/exists', 'POST', { path });
+      return response.exists === true;
     } catch (error) {
       return false;
     }
@@ -110,16 +110,7 @@ export default class SFTPClient {
 
   async makeDir(path: string): Promise<string> {
     try {
-      const response = await fetch(`${this.baseUrl}/mkdir`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Mkdir failed: ${response.statusText}`);
-      }
-
+      await this.request('/mkdir', 'POST', { path });
       return "";
     } catch (error) {
       throw new Error(`Failed to create directory: ${error}`);
@@ -128,16 +119,7 @@ export default class SFTPClient {
 
   async removeDir(path: string): Promise<string> {
     try {
-      const response = await fetch(`${this.baseUrl}/rmdir`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Rmdir failed: ${response.statusText}`);
-      }
-
+      await this.request('/rmdir', 'POST', { path });
       return "";
     } catch (error) {
       throw new Error(`Failed to remove directory: ${error}`);
@@ -146,16 +128,7 @@ export default class SFTPClient {
 
   async deleteFile(path: string): Promise<string> {
     try {
-      const response = await fetch(`${this.baseUrl}/delete`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ path }),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Delete failed: ${response.statusText}`);
-      }
-
+      await this.request('/delete', 'POST', { path });
       return "";
     } catch (error) {
       throw new Error(`Failed to delete file: ${error}`);
@@ -164,7 +137,7 @@ export default class SFTPClient {
 
   async disconnect(): Promise<string> {
     try {
-      await fetch(`${this.baseUrl}/disconnect`, { method: "POST" });
+      await this.request('/disconnect', 'POST');
       return "Disconnected";
     } catch (error) {
       return "Disconnected";

@@ -29,15 +29,35 @@ const bodyParser = require('body-parser');
 const SftpClient = require('ssh2-sftp-client');
 
 const app = express();
-app.use(cors());
-app.use(bodyParser.json());
+
+// CORS más agresivo
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true
+}));
+
+app.use(bodyParser.json({ limit: '50mb' }));
+app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
+
+// Log de todas las solicitudes
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path}`);
+  next();
+});
 
 let sftpClient = null;
 let currentConfig = null;
 
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 // Conectar al servidor SFTP
 app.post('/connect', async (req, res) => {
   try {
+    console.log('[CONNECT] Request body:', req.body);
     const config = {
       host: req.body.host,
       port: req.body.port || 22,
@@ -49,8 +69,10 @@ app.post('/connect', async (req, res) => {
     await sftpClient.connect(config);
     currentConfig = config;
 
+    console.log('[CONNECT] Success');
     res.json({ message: 'Connected' });
   } catch (error) {
+    console.error('[CONNECT] Error:', error.message);
     res.status(500).json({ error: error.message });
   }
 });
