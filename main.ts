@@ -1,4 +1,4 @@
-import { Plugin, TFolder, TFile } from 'obsidian';
+import { Plugin, TFolder, TFile, Notice } from 'obsidian';
 import CredentialTab from './src/credential';
 import SFTPClient from './src/client';
 
@@ -101,7 +101,7 @@ export default class SyncFTP extends Plugin {
 
 				let rem_path = this.settings.vault_path + this.app.vault.getName();
 				let rem_list = await this.client.listFiles(rem_path);
-				let loc_path = this.app.vault.adapter.basePath;
+				let loc_path = (this.app.vault.adapter as any).basePath;
 				let loc_list = this.app.vault.getAllLoadedFiles();
 				loc_list.splice(0, 1);
 
@@ -111,7 +111,7 @@ export default class SyncFTP extends Plugin {
 
 					try {
 						if (match) {
-							if (rem_file.type === 'd' || rem_file.size === match.stat.size) {
+							if (rem_file.type === 'd' || rem_file.size === (match as any).stat.size) {
 								loc_list.splice(match_index, 1);
 							}
 						} else if (!match) {
@@ -139,7 +139,7 @@ export default class SyncFTP extends Plugin {
 					if (loc_file instanceof TFolder) {
 						sync = await this.client.makeDir(`${rem_path}/${loc_file.path}`);
 					} else if (loc_file instanceof TFile) {
-						sync = await this.client.uploadFile(`${loc_path}/${loc_file.path}`, `${rem_path}/${loc_file.path}`);
+					sync = await this.client.uploadFile(loc_file.path, `${rem_path}/${loc_file.path}`, this.app.vault);
 					}
 
 					if (this.settings.notify && sync.trim() != '') new Notice(sync);
@@ -176,7 +176,7 @@ export default class SyncFTP extends Plugin {
 				} else {
 					let rem_path = this.settings.vault_path + this.app.vault.getName();
 					let rem_list = await this.client.listFiles(rem_path);
-					let loc_path = this.app.vault.adapter.basePath;
+					let loc_path = (this.app.vault.adapter as any).basePath;
 					let loc_list = this.app.vault.getAllLoadedFiles();
 					loc_list.splice(0, 1);
 
@@ -187,7 +187,7 @@ export default class SyncFTP extends Plugin {
 						try {
 							let sync = '';
 							if (match) {
-								if (match.type === 'd' || match.size === loc_file.stat.size) {
+							if (match.type === 'd' || match.size === (loc_file as any).stat.size) {
 									rem_list.splice(match_index, 1);
 								}
 							} else if (!match && loc_file.path !== '/') {
@@ -206,7 +206,7 @@ export default class SyncFTP extends Plugin {
 						let dst_path = (rem_file.path !== rem_path) ? `${rem_file.path.replace(rem_path,'')}/`: '';
 
 						if (rem_file.type !== 'd') {
-							sync = await this.client.downloadFile(`${rem_file.path}/${rem_file.name}`, `${loc_path}${dst_path}${rem_file.name}`);
+							sync = await this.client.downloadFile(`${rem_file.path}/${rem_file.name}`, `${dst_path}${rem_file.name}`, this.app.vault);
 						} else {
 							if (!loc_list.find(folder => folder.name === rem_file.name)) {
 								if (await this.client.fileExists(`${dst_path}${rem_file.name}/`) === false) {

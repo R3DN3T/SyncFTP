@@ -1,4 +1,4 @@
-import SyncFTP from './main';
+import SyncFTP from '../main';
 import { App, PluginSettingTab, Setting } from 'obsidian';
 
 export default class CredentialTab extends PluginSettingTab {
@@ -29,9 +29,9 @@ export default class CredentialTab extends PluginSettingTab {
 			.setName('Port')
 			.setDesc('FTP Port')
 			.addText(text => text
-				.setValue(this.plugin.settings.port)
+				.setValue(String(this.plugin.settings.port))
 				.onChange(async (value) => {
-					this.plugin.settings.port = value;
+					this.plugin.settings.port = Number(value);
 					await this.plugin.saveSettings();
 				}));
 
@@ -50,9 +50,9 @@ export default class CredentialTab extends PluginSettingTab {
 		new Setting(containerEl)
 			.setName('Proxy port')
 			.addText(text => text
-				.setValue(this.plugin.settings.proxy_port)
+				.setValue(String(this.plugin.settings.proxy_port))
 				.onChange(async (value) => {
-					this.plugin.settings.proxy_port = value;
+					this.plugin.settings.proxy_port = Number(value);
 					await this.plugin.saveSettings();
 				}));
 

@@ -24,6 +24,7 @@
 	},
 	"dependencies": {
 		"socks": "^2.7.1",
+		"ssh2": "^1.17.0",
 		"ssh2-sftp-client": "^8.0.0"
 	}
 }

@@ -1,160 +1,143 @@
-import Client from 'ssh2-sftp-client';
-import { SocksClient } from 'socks';
+import { Client, ConnectConfig } from "ssh2";
+
+interface ExtendedConnectConfig extends ConnectConfig {
+  proxy_host?: string;
+  proxy_port?: number;
+}
 
 export default class SFTPClient {
+  private conn: Client;
+
   constructor() {
-    this.client = new Client();
+    this.conn = new Client();
   }
 
-  async connect(options) {
-    console.log(`Connecting to ${options.host}:${options.port}`);
-    try {
-      if (options.proxy_host !== '') {
-        let opt = {
-          proxy: {
-            host: options.proxy_host,
-            port: options.proxy_port,
-            type: 5,
-          },
-          command: 'connect',
-          destination: {
-            host: options.host,
-            port: options.port
-          }
-        };
-
-        var socks = await SocksClient.createConnection(opt);
-
-        await this.client.connect({
-          host: options.host,
-          port: options.port,
-          sock: socks.socket,
-          username: options.username,
-          password: options.password
-        });
-      } else {
-        await this.client.connect({
+  private connectSSH(options: ExtendedConnectConfig): Promise<any> {
+    return new Promise((resolve, reject) => {
+      this.conn
+        .on("ready" as any, resolve)
+        .on("error", reject)
+        .connect({
           host: options.host,
           port: options.port,
           username: options.username,
-          password: options.password
+          password: options.password,
         });
-      }
-    } catch (err) {
-      console.log('Failed to connect:', err);
-      return(`Failed to connect:\n${err}`);
-    }
-    return('Connected to SFTP');
+    });
+  }
+
+  async connect(options: ExtendedConnectConfig) {
+    await this.connectSSH(options);
+    return "Connected";
+  }
+
+  async listFiles(remoteDir: string): Promise<any[]> {
+    return new Promise((resolve, reject) => {
+      this.conn.sftp((err, sftp) => {
+        if (err) return reject(err);
+
+        sftp.readdir(remoteDir, (err, list) => {
+          if (err) return reject(err);
+
+          const out = list.map(f => ({
+            name: f.filename,
+            size: f.attrs.size,
+            mtime: f.attrs.mtime * 1000,
+            type: f.longname.startsWith("d") ? "d" : "f",
+            path: remoteDir
+          }));
+
+          resolve(out);
+        });
+      });
+    });
+  }
+
+  async uploadFile(localPath: string, remotePath: string, vault: any): Promise<string> {
+    const content = await vault.adapter.read(localPath);
+
+    return new Promise((resolve, reject) => {
+      this.conn.sftp((err, sftp) => {
+        if (err) return reject(err);
+
+        const writeStream = sftp.createWriteStream(remotePath);
+
+        writeStream.on("close", () => resolve(""));
+        writeStream.on("error", reject);
+
+        writeStream.end(content);
+      });
+    });
+  }
+
+  async downloadFile(remotePath: string, localPath: string, vault: any): Promise<string> {
+    return new Promise((resolve, reject) => {
+      this.conn.sftp((err, sftp) => {
+        if (err) return reject(err);
+
+        let data = "";
+
+        const stream = sftp.createReadStream(remotePath);
+
+        stream.on("data", (chunk: any) => data += chunk);
+        stream.on("end", async () => {
+          await vault.adapter.write(localPath, data);
+          resolve("");
+        });
+        stream.on("error", reject);
+      });
+    });
+  }
+
+  async fileExists(path: string): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+      this.conn.sftp((err, sftp) => {
+        if (err) return reject(err);
+        sftp.stat(path, (err) => {
+          resolve(!err);
+        });
+      });
+    });
+  }
+
+  async makeDir(path: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      this.conn.sftp((err, sftp) => {
+        if (err) return reject(err);
+        sftp.mkdir(path, (err) => {
+          if (err) return reject(err);
+          resolve("");
+        });
+      });
+    });
+  }
+
+  async removeDir(path: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      this.conn.sftp((err, sftp) => {
+        if (err) return reject(err);
+        sftp.rmdir(path, (err) => {
+          if (err) return reject(err);
+          resolve("");
+        });
+      });
+    });
+  }
+
+  async deleteFile(path: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      this.conn.sftp((err, sftp) => {
+        if (err) return reject(err);
+        sftp.unlink(path, (err) => {
+          if (err) return reject(err);
+          resolve("");
+        });
+      });
+    });
   }
 
   async disconnect() {
-    console.log(`Disconnecting from SFTP.`);
-    await this.client.end();
-    return 'Disconnected from SFTP';
-  }
-
-  async listFiles(remoteDir, fileGlob) {
-    let fileObjects;
-    try {
-      fileObjects = await this.client.list(remoteDir, fileGlob);
-    } catch (err) {
-      console.log('Listing failed:', err);
-    }
-
-    var fileNames = [];
-
-    for (const file of fileObjects) {
-      if (file.type === 'd') {
-        console.log(`${new Date(file.modifyTime).toISOString()} PRE ${file.name}`);
-        fileNames.push({
-          'name': file.name,
-          'mtime': file.modifyTime,
-          'type': file.type,
-          'size': file.size,
-          'path': remoteDir
-        });
-        
-        let subFiles = await this.listFiles(`${remoteDir}/${file.name}`);
-        fileNames = fileNames.concat(subFiles);
-      } else {
-        console.log(`${new Date(file.modifyTime).toISOString()} ${file.size} ${file.name}`);
-        fileNames.push({
-          'name': file.name,
-          'mtime': file.modifyTime,
-          'type': file.type,
-          'size': file.size,
-          'path': remoteDir
-        });
-      }      
-    }
-
-    return fileNames;
-  }
-
-  async uploadFile(localFile, remoteFile) {
-    console.log(`Uploading ${localFile} to ${remoteFile}`);
-    try {
-      await this.client.put(localFile, remoteFile);
-    } catch (err) {
-      console.error('Uploading failed:', err);
-      return(`Uploading failed:\n${err}`);
-    }
-    return `Uploading success for\n${localFile}`;
-  }
-
-  async downloadFile(remoteFile, localFile) {
-    console.log(`Downloading ${remoteFile} to ${localFile}`);
-    try {
-      await this.client.get(remoteFile, localFile);
-    } catch (err) {
-      console.error('Downloading failed:', err);
-      return(`Downloading failed:\n${err}`);
-    }
-    return `Downloading success for\n${localFile}`;
-  }
-
-  async makeDir(remoteDir) {
-    console.log(`Creating directory ${remoteDir}`);
-    try {
-      await this.client.mkdir(remoteDir, true);
-    } catch (err) {
-      console.error('Failed to create directory:', err);
-      return(`Failed to make directory:\n${err}`);
-    }
-    return `Successfully made directory:\n${remoteDir}`;
-  }
-
-  async removeDir(remoteDir) {
-    console.log(`Deleting directory ${remoteDir}`);
-    try {
-      await this.client.rmdir(remoteDir, true);
-    } catch (err) {
-      console.error('Failed to remove directory:', err);
-      return(`Failed to remove directory:\n${err}`);
-    }
-    return `Successfully removed directory:\n${remoteDir}`;
-
-  }
-
-  async deleteFile(remoteFile) {
-    console.log(`Deleting ${remoteFile}`);
-    try {
-      await this.client.delete(remoteFile);
-    } catch (err) {
-      console.error('Deleting failed:', err);
-      return(`Deleting failed:\n${err}`);
-    }
-    return `Delete success for\n${remoteFile}`;
-  }
-
-  async fileExists(remoteFile) {
-    console.log(`Checking if ${remoteFile} exists`);
-    let exists = false;
-    try {
-      exists = await this.client.exists(remoteFile);
-    } catch (err) {
-      console.error('Exists check failed:', err);
-    }
-    return exists;
+    this.conn.end();
+    return "Disconnected";
   }
 }
