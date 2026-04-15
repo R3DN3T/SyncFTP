@@ -80,7 +80,6 @@ export default class SyncFTP extends Plugin {
 
 	async uploadFile() {
 		if (this.settings.url !== '') {
-			this.client = new SFTPClient(this.settings.server_url);
 			new Notice(`Connecting to SFTP for file sync:\n${this.settings.url}:${this.settings.port}\n${this.settings.username}`);
 			try {
 				let conn = await this.client.connect({
@@ -160,7 +159,6 @@ export default class SyncFTP extends Plugin {
 
 	async downloadFile() {
 		if (this.settings.url !== '') {
-			this.client = new SFTPClient(this.settings.server_url);
 			new Notice(`Connecting to SFTP for file sync:\n${this.settings.url}:${this.settings.port}\n${this.settings.username}`);
 			try {
 				let conn = await this.client.connect({
@@ -173,7 +171,7 @@ export default class SyncFTP extends Plugin {
 				});
 
 				if (this.settings.notify) new Notice(conn);
-
+				console.log(this.client.fileExists(this.settings.vault_path + this.app.vault.getName()));
 
 				if (! await this.client.fileExists(this.settings.vault_path + this.app.vault.getName())) {
 					new Notice('Vault does not exist on SFTP, nothing to download. Please upload.');
