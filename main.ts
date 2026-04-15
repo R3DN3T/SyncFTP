@@ -30,12 +30,9 @@ const DEFAULT_SETTINGS: SyncFTPSettings = {
 
 export default class SyncFTP extends Plugin {
 	settings: SyncFTPSettings;
-	client: SFTPClient;
 
 	async onload() {
 		await this.loadSettings();
-
-		this.client = new SFTPClient(this.settings.server_url);
 
 		if (this.settings.load_sync) {
 			this.downloadFile();
@@ -80,9 +77,10 @@ export default class SyncFTP extends Plugin {
 
 	async uploadFile() {
 		if (this.settings.url !== '') {
+			const client = new SFTPClient(this.settings.server_url);
 			new Notice(`Connecting to SFTP for file sync:\n${this.settings.url}:${this.settings.port}\n${this.settings.username}`);
 			try {
-				let conn = await this.client.connect({
+				let conn = await client.connect({
 					proxy_host: this.settings.proxy_host,
 					proxy_port: Number(this.settings.proxy_port),
 					host: this.settings.url,
@@ -93,16 +91,16 @@ export default class SyncFTP extends Plugin {
 
 				if (this.settings.notify) new Notice(conn);
 
-				if (await this.client.fileExists(this.settings.vault_path) === false) {
-					await this.client.makeDir(this.settings.vault_path);
+				if (await client.fileExists(this.settings.vault_path) === false) {
+					await client.makeDir(this.settings.vault_path);
 				}
 
-				if (await this.client.fileExists(`${this.settings.vault_path}${this.app.vault.getName()}/`) === false) {
-					await this.client.makeDir(`${this.settings.vault_path}${this.app.vault.getName()}/`);
+				if (await client.fileExists(`${this.settings.vault_path}${this.app.vault.getName()}/`) === false) {
+					await client.makeDir(`${this.settings.vault_path}${this.app.vault.getName()}/`);
 				}
 
 				let rem_path = this.settings.vault_path + this.app.vault.getName();
-				let rem_list = await this.client.listFiles(rem_path);
+				let rem_list = await client.listFiles(rem_path);
 				let loc_path = (this.app.vault.adapter as any).basePath;
 				let loc_list = this.app.vault.getAllLoadedFiles();
 				loc_list.splice(0, 1);
@@ -119,12 +117,12 @@ export default class SyncFTP extends Plugin {
 						} else if (!match) {
 							let sync = '';
 							if (rem_file.type === 'd') {
-								if (await this.client.fileExists(`${rem_file.path}/${rem_file.name}`)) {
-									sync = await this.client.removeDir(`${rem_file.path}/${rem_file.name}`);
+								if (await client.fileExists(`${rem_file.path}/${rem_file.name}`)) {
+									sync = await client.removeDir(`${rem_file.path}/${rem_file.name}`);
 								}
 							} else {
-								if (await this.client.fileExists(`${rem_file.path}/${rem_file.name}`)) {
-									sync = await this.client.deleteFile(`${rem_file.path}/${rem_file.name}`);
+								if (await client.fileExists(`${rem_file.path}/${rem_file.name}`)) {
+									sync = await client.deleteFile(`${rem_file.path}/${rem_file.name}`);
 								}
 							}
 
@@ -139,15 +137,15 @@ export default class SyncFTP extends Plugin {
 				for (const loc_file of loc_list) {
 					let sync = '';
 					if (loc_file instanceof TFolder) {
-						sync = await this.client.makeDir(`${rem_path}/${loc_file.path}`);
+						sync = await client.makeDir(`${rem_path}/${loc_file.path}`);
 					} else if (loc_file instanceof TFile) {
-					sync = await this.client.uploadFile(loc_file.path, `${rem_path}/${loc_file.path}`, this.app.vault);
+					sync = await client.uploadFile(loc_file.path, `${rem_path}/${loc_file.path}`, this.app.vault);
 					}
 
 					if (this.settings.notify && sync.trim() != '') new Notice(sync);
 				}
 
-				let disconn = await this.client.disconnect();
+				let disconn = await client.disconnect();
 
 				if (this.settings.notify) new Notice(disconn);
 				else new Notice('Done!');
@@ -159,9 +157,10 @@ export default class SyncFTP extends Plugin {
 
 	async downloadFile() {
 		if (this.settings.url !== '') {
+			const client = new SFTPClient(this.settings.server_url);
 			new Notice(`Connecting to SFTP for file sync:\n${this.settings.url}:${this.settings.port}\n${this.settings.username}`);
 			try {
-				let conn = await this.client.connect({
+				let conn = await client.connect({
 					proxy_host: this.settings.proxy_host,
 					proxy_port: Number(this.settings.proxy_port),
 					host: this.settings.url,
@@ -175,11 +174,11 @@ export default class SyncFTP extends Plugin {
 				const vaultName = this.app.vault.getName();
 				const vaultPath = this.settings.vault_path + vaultName;
 
-				if (! await this.client.fileExists(vaultPath)) {
+				if (! await client.fileExists(vaultPath)) {
 					new Notice(`Vault "${vaultName}" does not exist at ${vaultPath}. Please upload first or check vault name.`);
 				} else {
 					let rem_path = this.settings.vault_path + this.app.vault.getName();
-					let rem_list = await this.client.listFiles(rem_path);
+					let rem_list = await client.listFiles(rem_path);
 					let loc_path = (this.app.vault.adapter as any).basePath;
 					let loc_list = this.app.vault.getAllLoadedFiles();
 					loc_list.splice(0, 1);
@@ -210,10 +209,10 @@ export default class SyncFTP extends Plugin {
 						let dst_path = (rem_file.path !== rem_path) ? `${rem_file.path.replace(rem_path,'')}/`: '';
 
 						if (rem_file.type !== 'd') {
-							sync = await this.client.downloadFile(`${rem_file.path}/${rem_file.name}`, `${dst_path}${rem_file.name}`, this.app.vault);
+							sync = await client.downloadFile(`${rem_file.path}/${rem_file.name}`, `${dst_path}${rem_file.name}`, this.app.vault);
 						} else {
 							if (!loc_list.find(folder => folder.name === rem_file.name)) {
-								if (await this.client.fileExists(`${dst_path}${rem_file.name}/`) === false) {
+								if (await client.fileExists(`${dst_path}${rem_file.name}/`) === false) {
 									await this.app.vault.createFolder(`${dst_path}${rem_file.name}/`);
 									sync = `Successfully made directory: ${rem_file.name}`;
 								}
@@ -224,7 +223,7 @@ export default class SyncFTP extends Plugin {
 					};
 				}
 
-				let disconn = await this.client.disconnect();
+				let disconn = await client.disconnect();
 
 				if (this.settings.notify) new Notice(disconn);
 				else new Notice('Done!');
