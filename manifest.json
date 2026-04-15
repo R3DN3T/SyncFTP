@@ -4,7 +4,7 @@
 	"version": "2.0.0",
 	"minAppVersion": "0.15.0",
 	"description": "This plugin syncs files to an SFTP, with credentials in settings.",
-	"author": "Alex Donnan",
-	"authorUrl": "https://github.com/alex-donnan/",
+	"author": "R3DN3T",
+	"authorUrl": "https://github.com/R3DN3T/",
 	"isDesktopOnly": false
 }
