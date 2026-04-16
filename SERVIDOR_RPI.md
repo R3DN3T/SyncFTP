@@ -57,6 +57,26 @@ app.use((err, req, res, next) => {
 let sftpClient = null;
 let currentConfig = null;
 
+// Helper: Generate ISO timestamp for versioning
+function getTimestamp() {
+  return new Date().toISOString().replace(/[:.]/g, '-').replace('Z', '');
+}
+
+// Helper: Get the latest version directory for a vault
+async function getLatestVersionPath(basePath) {
+  try {
+    const list = await sftpClient.list(basePath);
+    // Filter only directories (type 'd') and sort by name (which is a timestamp)
+    const dirs = list.filter(item => item.type === 'd').sort((a, b) => b.name.localeCompare(a.name));
+    if (dirs.length > 0) {
+      return `${basePath}/${dirs[0].name}`;
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+}
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ status: 'ok' });
@@ -113,46 +133,157 @@ app.post('/connect', async (req, res) => {
   }
 });
 
-// Listar archivos
+// Listar archivos (de la versión más reciente)
 app.post('/list', async (req, res) => {
   try {
     if (!sftpClient) {
       return res.status(400).json({ error: 'Not connected' });
     }
 
-    const files = await sftpClient.list(req.body.path);
+    const requestPath = req.body.path;
+    console.log(`[LIST] Original path: ${requestPath}`);
+    
+    const pathParts = requestPath.split('/').filter(p => p);
+    let vaultBase = '';
+    let vaultName = '';
+    
+    const obsidianIndex = pathParts.indexOf('obsidian');
+    if (obsidianIndex !== -1 && obsidianIndex + 1 < pathParts.length) {
+      // Reconstruct the path up to and including vault name
+      vaultBase = '/' + pathParts.slice(0, obsidianIndex + 2).join('/');
+      vaultName = pathParts[obsidianIndex + 1];
+    } else {
+      vaultName = pathParts[0];
+      vaultBase = '/' + vaultName;
+    }
+    
+    console.log(`[LIST] Vault base: ${vaultBase}`);
+    const latestVersion = await getLatestVersionPath(vaultBase);
+    
+    if (!latestVersion) {
+      console.log(`[LIST] No versions found for ${vaultBase}`);
+      return res.json([]);
+    }
+
+    console.log(`[LIST] Listing from: ${latestVersion}`);
+    const files = await sftpClient.list(latestVersion);
     res.json(files);
   } catch (error) {
+    console.error(`[LIST] Error:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Descargar archivo
+// Descargar archivo (de la versión más reciente)
 app.post('/download', async (req, res) => {
   try {
     if (!sftpClient) {
       return res.status(400).json({ error: 'Not connected' });
     }
 
-    const content = await sftpClient.get(req.body.path);
+    const filePath = req.body.path;
+    console.log(`[DOWNLOAD] Original path: ${filePath}`);
+    
+    const pathParts = filePath.split('/').filter(p => p);
+    let vaultBase = '';
+    let relativePathParts = [];
+    
+    const obsidianIndex = pathParts.indexOf('obsidian');
+    if (obsidianIndex !== -1 && obsidianIndex + 1 < pathParts.length) {
+      vaultBase = '/' + pathParts.slice(0, obsidianIndex + 2).join('/');
+      relativePathParts = pathParts.slice(obsidianIndex + 2);
+    } else {
+      vaultBase = '/' + pathParts[0];
+      relativePathParts = pathParts.slice(1);
+    }
+    
+    const relativePath = relativePathParts.join('/');
+    console.log(`[DOWNLOAD] Vault base: ${vaultBase}, relative: ${relativePath}`);
+    const latestVersion = await getLatestVersionPath(vaultBase);
+    
+    if (!latestVersion) {
+      return res.status(404).json({ error: 'No versions found for vault' });
+    }
+
+    const versionedPath = `${latestVersion}/${relativePath}`;
+    console.log(`[DOWNLOAD] Downloading from: ${versionedPath}`);
+    
+    const content = await sftpClient.get(versionedPath);
     const text = content.toString('utf8');
     res.json({ content: text });
   } catch (error) {
+    console.error(`[DOWNLOAD] Error:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
 
-// Subir archivo
+// Subir archivo (con versionado)
 app.post('/upload', async (req, res) => {
   try {
     if (!sftpClient) {
       return res.status(400).json({ error: 'Not connected' });
     }
 
+    const filePath = req.body.path;
+    const sessionId = req.body.sessionId;
+    
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Missing sessionId' });
+    }
+    
+    console.log(`[UPLOAD] Original path: ${filePath}`);
+    console.log(`[UPLOAD] Session ID: ${sessionId}`);
+    
+    const pathParts = filePath.split('/').filter(p => p);
+    let vaultBase = '';
+    let relativePathParts = [];
+    
+    const obsidianIndex = pathParts.indexOf('obsidian');
+    if (obsidianIndex !== -1 && obsidianIndex + 1 < pathParts.length) {
+      vaultBase = '/' + pathParts.slice(0, obsidianIndex + 2).join('/');
+      relativePathParts = pathParts.slice(obsidianIndex + 2);
+    } else {
+      vaultBase = '/' + pathParts[0];
+      relativePathParts = pathParts.slice(1);
+    }
+    
+    const relativePath = relativePathParts.join('/');
+    console.log(`[UPLOAD] Vault base: ${vaultBase}, relative: ${relativePath}`);
+    
+    // Create versioned path: vault_base/sessionId/relative_path
+    const versionedPath = `${vaultBase}/${sessionId}/${relativePath}`;
+    console.log(`[UPLOAD] Versioned path: ${versionedPath}`);
+    
+    // Ensure directory exists
+    const dirPath = versionedPath.substring(0, versionedPath.lastIndexOf('/'));
+    console.log(`[UPLOAD] Creating directory: ${dirPath}`);
+    try {
+      await sftpClient.list(dirPath);
+      console.log(`[UPLOAD] Directory exists`);
+    } catch (e) {
+      // Directory doesn't exist, create it recursively
+      console.log(`[UPLOAD] Creating directory recursively...`);
+      const dirs = dirPath.split('/');
+      let currentPath = '';
+      for (const dir of dirs) {
+        if (!dir) continue; // Skip empty parts
+        currentPath += '/' + dir;
+        try {
+          await sftpClient.list(currentPath);
+        } catch (err) {
+          console.log(`[UPLOAD] Creating: ${currentPath}`);
+          await sftpClient.mkdir(currentPath);
+        }
+      }
+    }
+
     const buffer = Buffer.from(req.body.content, 'utf8');
-    await sftpClient.put(buffer, req.body.path);
-    res.json({ message: 'Uploaded' });
+    await sftpClient.put(buffer, versionedPath);
+    
+    console.log(`[UPLOAD] Success: ${versionedPath}`);
+    res.json({ message: 'Uploaded', path: versionedPath, version: sessionId });
   } catch (error) {
+    console.error(`[UPLOAD] Error:`, error.message);
     res.status(500).json({ error: error.message });
   }
 });
@@ -199,37 +330,73 @@ app.post('/delete', async (req, res) => {
   }
 });
 
-// Comprobar si existe
+// Comprobar si existe (busca en la versión más reciente)
 app.post('/exists', async (req, res) => {
   try {
     if (!sftpClient) {
       return res.status(400).json({ error: 'Not connected' });
     }
 
-    const path = req.body.path;
-    console.log(`[EXISTS] Checking path: "${path}"`);
+    const requestPath = req.body.path;
+    console.log(`[EXISTS] Checking: ${requestPath}`);
+    
+    const pathParts = requestPath.split('/').filter(p => p);
+    let vaultBase = '';
+    let relativePathParts = [];
+    
+    const obsidianIndex = pathParts.indexOf('obsidian');
+    if (obsidianIndex !== -1 && obsidianIndex + 1 < pathParts.length) {
+      vaultBase = '/' + pathParts.slice(0, obsidianIndex + 2).join('/');
+      relativePathParts = pathParts.slice(obsidianIndex + 2);
+    } else {
+      vaultBase = '/' + pathParts[0];
+      relativePathParts = pathParts.slice(1);
+    }
+    
+    const relativePath = relativePathParts.join('/');
+    console.log(`[EXISTS] Vault base: ${vaultBase}, relative: ${relativePath}`);
+    
+    // Check if vault has any versions
+    if (!relativePath) {
+      console.log(`[EXISTS] Checking vault existence: ${vaultBase}`);
+      try {
+        const list = await sftpClient.list(vaultBase);
+        const hasVersions = list.some(item => item.type === 'd');
+        console.log(`[EXISTS] Vault has versions: ${hasVersions}`);
+        res.json({ exists: hasVersions });
+        return;
+      } catch (e) {
+        res.json({ exists: false });
+        return;
+      }
+    }
+    
+    const latestVersion = await getLatestVersionPath(vaultBase);
+    if (!latestVersion) {
+      console.log(`[EXISTS] No versions found for ${vaultBase}`);
+      res.json({ exists: false });
+      return;
+    }
+
+    const versionedPath = `${latestVersion}/${relativePath}`;
+    console.log(`[EXISTS] Checking: ${versionedPath}`);
     
     try {
-      // Intentar listar (funciona para directorios)
-      const list = await sftpClient.list(path);
-      console.log(`[EXISTS] Success - is directory with ${list.length} items`);
+      const list = await sftpClient.list(versionedPath);
+      console.log(`[EXISTS] Found as directory`);
       res.json({ exists: true });
     } catch (listError) {
-      console.log(`[EXISTS] List failed, trying stat...`);
       try {
-        // Si no es directorio, intentar como archivo
-        const stat = await sftpClient.stat(path);
-        console.log(`[EXISTS] Success - is file/other`);
+        const stat = await sftpClient.stat(versionedPath);
+        console.log(`[EXISTS] Found as file`);
         res.json({ exists: true });
       } catch (statError) {
-        console.log(`[EXISTS] NOT FOUND - path does not exist`);
-        console.log(`[EXISTS] List error: ${listError.message}`);
-        console.log(`[EXISTS] Stat error: ${statError.message}`);
+        console.log(`[EXISTS] Not found`);
         res.json({ exists: false });
       }
     }
   } catch (error) {
-    console.error(`[EXISTS] Unexpected error:`, error.message);
+    console.error(`[EXISTS] Error:`, error.message);
     res.json({ exists: false });
   }
 });

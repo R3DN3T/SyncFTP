@@ -66,11 +66,12 @@ export default class SFTPClient {
   async uploadFile(
     localPath: string,
     remotePath: string,
-    vault: any
+    vault: any,
+    sessionId: string
   ): Promise<string> {
     try {
       const content = await vault.adapter.read(localPath);
-      await this.request('/upload', 'POST', { path: remotePath, content });
+      await this.request('/upload', 'POST', { path: remotePath, content, sessionId });
       return "";
     } catch (error) {
       throw new Error(`Failed to upload: ${error}`);

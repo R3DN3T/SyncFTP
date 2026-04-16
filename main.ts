@@ -75,6 +75,10 @@ export default class SyncFTP extends Plugin {
 		await this.saveData(this.settings);
 	}
 
+	private generateSessionId(): string {
+		return new Date().toISOString().replace(/[:.]/g, '-').replace('Z', '');
+	}
+
 	async uploadFile() {
 		if (this.settings.url !== '') {
 			const client = new SFTPClient(this.settings.server_url);
@@ -98,6 +102,10 @@ export default class SyncFTP extends Plugin {
 				if (await client.fileExists(`${this.settings.vault_path}${this.app.vault.getName()}/`) === false) {
 					await client.makeDir(`${this.settings.vault_path}${this.app.vault.getName()}/`);
 				}
+
+				// Generate session ID for this upload
+				const sessionId = this.generateSessionId();
+				console.log(`[UPLOAD] Session ID: ${sessionId}`);
 
 				let rem_path = this.settings.vault_path + this.app.vault.getName();
 				let rem_list = await client.listFiles(rem_path);
@@ -139,7 +147,7 @@ export default class SyncFTP extends Plugin {
 					if (loc_file instanceof TFolder) {
 						sync = await client.makeDir(`${rem_path}/${loc_file.path}`);
 					} else if (loc_file instanceof TFile) {
-					sync = await client.uploadFile(loc_file.path, `${rem_path}/${loc_file.path}`, this.app.vault);
+						sync = await client.uploadFile(loc_file.path, `${rem_path}/${loc_file.path}`, this.app.vault, sessionId);
 					}
 
 					if (this.settings.notify && sync.trim() != '') new Notice(sync);
