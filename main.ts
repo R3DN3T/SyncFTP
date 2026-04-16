@@ -108,49 +108,30 @@ export default class SyncFTP extends Plugin {
 				console.log(`[UPLOAD] Session ID: ${sessionId}`);
 
 				let rem_path = this.settings.vault_path + this.app.vault.getName();
-				let rem_list = await client.listFiles(rem_path);
-				let loc_path = (this.app.vault.adapter as any).basePath;
+				
+				// Get ALL local files - no filtering, upload everything
 				let loc_list = this.app.vault.getAllLoadedFiles();
-				loc_list.splice(0, 1);
+				loc_list.splice(0, 1); // Remove root
 
-				for (const rem_file of rem_list) {
-					let match_index = loc_list.findIndex(file => `/${file.path}` === `${rem_file.path.replace(rem_path, '')}/${rem_file.name}`);
-					let match = loc_list[match_index];
+				console.log(`[UPLOAD] Uploading ${loc_list.length} files/folders`);
 
-					try {
-						if (match) {
-							if (rem_file.type === 'd' || rem_file.size === (match as any).stat.size) {
-								loc_list.splice(match_index, 1);
-							}
-						} else if (!match) {
-							let sync = '';
-							if (rem_file.type === 'd') {
-								if (await client.fileExists(`${rem_file.path}/${rem_file.name}`)) {
-									sync = await client.removeDir(`${rem_file.path}/${rem_file.name}`);
-								}
-							} else {
-								if (await client.fileExists(`${rem_file.path}/${rem_file.name}`)) {
-									sync = await client.deleteFile(`${rem_file.path}/${rem_file.name}`);
-								}
-							}
-
-							if (this.settings.notify && sync.trim() != '') new Notice(sync);
-						}
-					} catch (err) {
-						console.error(`Error deleting ${rem_file.name}: ${err}`);
-					}
-
-				}
-
+				// Upload all files and create all directories
 				for (const loc_file of loc_list) {
 					let sync = '';
-					if (loc_file instanceof TFolder) {
-						sync = await client.makeDir(`${rem_path}/${loc_file.path}`);
-					} else if (loc_file instanceof TFile) {
-						sync = await client.uploadFile(loc_file.path, `${rem_path}/${loc_file.path}`, this.app.vault, sessionId);
-					}
+					try {
+						if (loc_file instanceof TFolder) {
+							sync = await client.makeDir(`${rem_path}/${loc_file.path}`);
+							console.log(`[UPLOAD] Created folder: ${loc_file.path}`);
+						} else if (loc_file instanceof TFile) {
+							sync = await client.uploadFile(loc_file.path, `${rem_path}/${loc_file.path}`, this.app.vault, sessionId);
+							console.log(`[UPLOAD] Uploaded file: ${loc_file.path}`);
+						}
 
-					if (this.settings.notify && sync.trim() != '') new Notice(sync);
+						if (this.settings.notify && sync.trim() != '') new Notice(sync);
+					} catch (err) {
+						console.error(`Error uploading ${loc_file.name}: ${err}`);
+						if (this.settings.notify) new Notice(`Error uploading ${loc_file.name}: ${err}`);
+					}
 				}
 
 				let disconn = await client.disconnect();
@@ -187,48 +168,37 @@ export default class SyncFTP extends Plugin {
 				} else {
 					let rem_path = this.settings.vault_path + this.app.vault.getName();
 					let rem_list = await client.listFiles(rem_path);
-					let loc_path = (this.app.vault.adapter as any).basePath;
-					let loc_list = this.app.vault.getAllLoadedFiles();
-					loc_list.splice(0, 1);
 
-					for (const loc_file of loc_list) {
-						let match_index = rem_list.findIndex(file => `${file.path.replace(rem_path, '')}/${file.name}` === `/${loc_file.path}`);
-						let match = rem_list[match_index];
+					console.log(`[DOWNLOAD] Found ${rem_list.length} items in latest version`);
 
-						try {
-							let sync = '';
-							if (match) {
-							if (match.type === 'd' || match.size === (loc_file as any).stat.size) {
-									rem_list.splice(match_index, 1);
-								}
-							} else if (!match && loc_file.path !== '/') {
-								await this.app.vault.trash(loc_file, false);
-								sync = `Local file ${loc_file.name} moved to Obsidian trash.`;
-							}
-
-							if (this.settings.notify && sync.trim() != '') new Notice(sync);
-						} catch (err) {
-							console.error(`Error moving ${loc_file.name} to trash: ${err}`);
-						}
-					}
-
+					// Download all files and create all directories from remote
 					for (const rem_file of rem_list) {
 						let sync = '';
 						let dst_path = (rem_file.path !== rem_path) ? `${rem_file.path.replace(rem_path,'')}/`: '';
 
-						if (rem_file.type !== 'd') {
-							sync = await client.downloadFile(`${rem_file.path}/${rem_file.name}`, `${dst_path}${rem_file.name}`, this.app.vault);
-						} else {
-							if (!loc_list.find(folder => folder.name === rem_file.name)) {
-								if (await client.fileExists(`${dst_path}${rem_file.name}/`) === false) {
+						try {
+							if (rem_file.type === 'd') {
+								// Create directory
+								try {
 									await this.app.vault.createFolder(`${dst_path}${rem_file.name}/`);
-									sync = `Successfully made directory: ${rem_file.name}`;
+									sync = `Created directory: ${rem_file.name}`;
+									console.log(`[DOWNLOAD] Created folder: ${dst_path}${rem_file.name}`);
+								} catch (e) {
+									// Directory might already exist
+									console.log(`[DOWNLOAD] Folder already exists: ${dst_path}${rem_file.name}`);
 								}
+							} else {
+								// Download file
+								sync = await client.downloadFile(`${rem_file.path}/${rem_file.name}`, `${dst_path}${rem_file.name}`, this.app.vault);
+								console.log(`[DOWNLOAD] Downloaded file: ${dst_path}${rem_file.name}`);
 							}
-						}
 
-						if (this.settings.notify && sync.trim() != '') new Notice(sync);
-					};
+							if (this.settings.notify && sync.trim() != '') new Notice(sync);
+						} catch (err) {
+							console.error(`Error downloading ${rem_file.name}: ${err}`);
+							if (this.settings.notify) new Notice(`Error downloading ${rem_file.name}: ${err}`);
+						}
+					}
 				}
 
 				let disconn = await client.disconnect();
