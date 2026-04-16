@@ -171,7 +171,35 @@ export default class SyncFTP extends Plugin {
 
 					console.log(`[DOWNLOAD] Found ${rem_list.length} items in latest version`);
 
-					// Download all files and create all directories from remote
+					// Get local files list
+					let loc_list = this.app.vault.getAllLoadedFiles();
+					loc_list.splice(0, 1); // Remove root
+
+					console.log(`[DOWNLOAD] Found ${loc_list.length} local items`);
+
+					// First pass: Delete local files/folders that don't exist in remote
+					for (const loc_file of loc_list) {
+						// Check if this file exists in remote
+						const existsInRemote = rem_list.some(rem_file => {
+							const rem_relative = rem_file.path.replace(rem_path, '');
+							const loc_relative = `/${loc_file.path}`;
+							return `${rem_relative}/${rem_file.name}` === loc_relative || 
+								   `${rem_relative}/${rem_file.name}/` === `${loc_relative}/`;
+						});
+
+						if (!existsInRemote) {
+							try {
+								console.log(`[DOWNLOAD] Deleting local file (not in server): ${loc_file.path}`);
+								await this.app.vault.trash(loc_file, false);
+								if (this.settings.notify) new Notice(`Deleted: ${loc_file.name}`);
+							} catch (err) {
+								console.error(`Error deleting ${loc_file.path}: ${err}`);
+								if (this.settings.notify) new Notice(`Error deleting ${loc_file.name}: ${err}`);
+							}
+						}
+					}
+
+					// Second pass: Download all files from remote
 					for (const rem_file of rem_list) {
 						let sync = '';
 						let dst_path = (rem_file.path !== rem_path) ? `${rem_file.path.replace(rem_path,'')}/`: '';
